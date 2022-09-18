@@ -1,21 +1,25 @@
-package com.hikvision.websocket.client;
+package com.hikvision.websocket.netty;
 
 import com.hikvision.websocket.api.URL;
+import com.hikvision.websocket.netty.codec.CodecAdapter;
 import com.hikvision.websocket.constants.Constants;
 import com.hikvision.websocket.exception.RemotingException;
-import com.hikvision.websocket.handler.NettyClientHandler;
-import com.hikvision.websocket.transport.ChannelHandler;
+import com.hikvision.websocket.netty.exchange.Request;
+import com.hikvision.websocket.netty.exchange.Response;
+import com.hikvision.websocket.netty.handler.NettyClientHandler;
+import com.hikvision.websocket.netty.remoting.ChannelHandler;
+import com.hikvision.websocket.netty.transport.AbstractClient;
 import io.netty.bootstrap.Bootstrap;
 import io.netty.buffer.PooledByteBufAllocator;
 import io.netty.channel.*;
 import io.netty.channel.socket.SocketChannel;
-import io.netty.handler.codec.LengthFieldBasedFrameDecoder;
-import lombok.extern.slf4j.Slf4j;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
-import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 
 import static com.hikvision.websocket.constants.Constants.DEFAULT_CONNECT_TIMEOUT;
@@ -28,8 +32,9 @@ import static com.hikvision.websocket.factory.NettyEventLoopFactory.socketChanne
  * @author zhangwei151
  * @date 2022/9/14 14:54
  */
-@Slf4j
 public class NettyClient extends AbstractClient {
+
+    private static final Logger logger = LoggerFactory.getLogger(NettyClient.class);
 
     /**
      * client cache
@@ -37,10 +42,13 @@ public class NettyClient extends AbstractClient {
     private static final ConcurrentMap<InetSocketAddress, NettyClient> CLIENT_MAP = new ConcurrentHashMap<>();
 
     /**
-     * netty client bootstrap
+     * all client shared worker thread pool
      */
     private static final EventLoopGroup EVENT_LOOP_GROUP = eventLoopGroup(Constants.DEFAULT_IO_THREADS, "NettyClientWorker");
 
+    /**
+     * netty client bootstrap
+     */
     private Bootstrap bootstrap;
 
     /**
@@ -56,24 +64,23 @@ public class NettyClient extends AbstractClient {
      */
     public NettyClient(final URL url, final ChannelHandler handler) throws RemotingException {
         super(url, handler);
-        this.bootstrap = new Bootstrap();
     }
 
     /**
-     * 通过netty的channel获取封装的client
+     * Get the encapsulated client through netty's channel
      *
-     * @param url wrapper URL
-     * @param handler wrapper handler
+     * @param socketAddress service socket address
+     * @param handler       wrapper handler
      * @return
      */
-    public static NettyClient getOrAddClient(URL url, ChannelHandler handler) {
-        if (url == null) return null;
+    public static NettyClient getOrAddClient(InetSocketAddress socketAddress, ChannelHandler handler) {
+        if (socketAddress == null) return null;
 
-        InetSocketAddress inetSocketAddress = new InetSocketAddress(url.getHost(), url.getPort());
-        NettyClient res = CLIENT_MAP.get(inetSocketAddress);
+        NettyClient res = CLIENT_MAP.get(socketAddress);
         if (res == null) {
+            URL url = new URL(socketAddress.getHostString(), socketAddress.getPort());
             NettyClient nettyClient = new NettyClient(url, handler);
-            res = CLIENT_MAP.putIfAbsent(inetSocketAddress, nettyClient);
+            res = CLIENT_MAP.putIfAbsent(socketAddress, nettyClient);
             if (res == null) {
                 res = nettyClient;
             }
@@ -82,20 +89,42 @@ public class NettyClient extends AbstractClient {
     }
 
     /**
+     * Remove invalid client
+     *
+     * @param socketAddress service socket address
+     */
+    public static void removeClient(InetSocketAddress socketAddress) {
+        if (socketAddress != null) {
+            NettyClient client = CLIENT_MAP.remove(socketAddress);
+            if (client != null) {
+                client.close();
+            }
+        }
+    }
+
+    /**
      * init bootstrap
      * @throws Throwable
      */
     @Override
     protected void doOpen() throws Throwable {
+        this.bootstrap = new Bootstrap();
         final NettyClientHandler nettyClientHandler = createNettyClientHandler();
         initBootstrap(nettyClientHandler);
     }
 
+    @Override
+    protected void doClose() throws Throwable {
+
+    }
+
     protected NettyClientHandler createNettyClientHandler() {
-        return new NettyClientHandler(getUrl(), this);
+        return new NettyClientHandler(getUrl(), this, resultCollector);
     }
 
     protected void initBootstrap(NettyClientHandler nettyClientHandler) {
+        final CodecAdapter codecAdapter = new CodecAdapter();
+
         bootstrap.group(EVENT_LOOP_GROUP)
                 .option(ChannelOption.SO_KEEPALIVE, true)
                 .option(ChannelOption.TCP_NODELAY, true)
@@ -107,10 +136,9 @@ public class NettyClient extends AbstractClient {
             @Override
             protected void initChannel(SocketChannel ch) throws Exception {
                 ch.pipeline()
-                        // todo 编解码器的创建
-                        .addLast("", new LengthFieldBasedFrameDecoder(65535, 2, 2))
-                        .addLast("decoder", null)
-                        .addLast("encoder", null)
+                        .addLast("skipDecoder", codecAdapter.getSkipDecoder(1024, 2, 2, -4, 0))
+                        .addLast("decoder", codecAdapter.getDecoder())
+                        .addLast("encoder", codecAdapter.getEncoder())
                         .addLast("handler", nettyClientHandler);
             }
         });
@@ -131,8 +159,8 @@ public class NettyClient extends AbstractClient {
                     Channel oldChannel = NettyClient.this.channel;
                     if (oldChannel != null) {
                         try {
-                            if (log.isInfoEnabled()) {
-                                log.info("Close old netty channel " + oldChannel + " on create new netty channel " + channel);
+                            if (logger.isInfoEnabled()) {
+                                logger.info("Close old netty channel " + oldChannel + " on create new netty channel " + channel);
                             }
                             oldChannel.close();
                         } finally {
@@ -142,8 +170,8 @@ public class NettyClient extends AbstractClient {
                 } finally {
                     if (NettyClient.this.isClosed()) {
                         try {
-                            if (log.isInfoEnabled()) {
-                                log.info("Close new netty channel " + channel + ", because the client closed.");
+                            if (logger.isInfoEnabled()) {
+                                logger.info("Close new netty channel " + channel + ", because the client closed.");
                             }
                             channel.close();
                         } finally {
@@ -157,19 +185,19 @@ public class NettyClient extends AbstractClient {
             } else if (future.cause() != null){
                 // connection failed
                 Throwable cause = future.cause();
-                RemotingException remotingException = new RemotingException(this, "client(url: " + getUrl() + ") failed to connect to server "
+                RemotingException remotingException = new RemotingException(this, "client(url: " + getLocalAddress() + ") failed to connect to server "
                         + getRemoteAddress() + ", error message is:" + cause.getMessage(), cause);
 
-                log.error("network disconnected. Failed to connect to provider server by other reason.", cause);
+                logger.error("network disconnected. Failed to connect to provider server by other reason.", cause);
 
                 throw remotingException;
             } else {
                 // client side timeout
-                RemotingException remotingException = new RemotingException(this, "client(url: " + getUrl() + ") failed to connect to server "
+                RemotingException remotingException = new RemotingException(this, "client(url: " + getLocalAddress() + ") failed to connect to server "
                         + getRemoteAddress() + " client-side timeout "
                         + getConnectTimeout() + "ms (elapsed: " + (System.currentTimeMillis() - start) + "ms) from netty client ");
 
-                log.error("provider crash. Client-side timeout.", remotingException);
+                logger.error("provider crash. Client-side timeout.", remotingException);
 
                 throw remotingException;
             }
@@ -183,14 +211,20 @@ public class NettyClient extends AbstractClient {
         try {
             NettyChannel.removeChannelIfDisconnected(channel);
         } catch (Throwable t) {
-            log.warn(t.getMessage());
+            logger.warn(t.getMessage());
         }
     }
 
     @Override
-    protected com.hikvision.websocket.transport.Channel getChannel() {
+    protected com.hikvision.websocket.netty.remoting.Channel getChannel() {
         Channel c = channel;
         if (c == null) return null;
         return NettyChannel.getOrAddChannel(channel, getUrl(), this);
+    }
+
+    public Future<Response> request(Request request) {
+        Future<Response> future = resultCollector.createFuture(request);
+        send(request);
+        return future;
     }
 }

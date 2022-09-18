@@ -1,43 +1,53 @@
-package com.hikvision.websocket.handler;
+package com.hikvision.websocket.netty.handler;
 
 import com.hikvision.websocket.api.URL;
-import com.hikvision.websocket.client.NettyChannel;
-import com.hikvision.websocket.exchange.Request;
-import com.hikvision.websocket.transport.ChannelHandler;
+import com.hikvision.websocket.netty.NettyChannel;
+import com.hikvision.websocket.netty.exchange.Request;
+import com.hikvision.websocket.netty.exchange.Response;
+import com.hikvision.websocket.netty.exchange.ResultCollector;
+import com.hikvision.websocket.netty.remoting.ChannelHandler;
 import io.netty.channel.ChannelDuplexHandler;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelPromise;
-import lombok.extern.slf4j.Slf4j;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * @author zhangwei151
  * @date 2022/9/14 15:35
  */
-@Slf4j
 @io.netty.channel.ChannelHandler.Sharable
 public class NettyClientHandler extends ChannelDuplexHandler {
+
+    private static final Logger logger = LoggerFactory.getLogger(NettyClientHandler.class);
 
     private final URL url;
 
     private final ChannelHandler handler;
 
-    public NettyClientHandler(URL url, ChannelHandler handler) {
+    private final ResultCollector listener;
+
+    public NettyClientHandler(URL url, ChannelHandler handler, ResultCollector listener) {
         if (url == null) {
             throw new IllegalArgumentException("url == null");
         }
         if (handler == null) {
             throw new IllegalArgumentException("handler == null");
         }
+        if (listener == null) {
+            throw new IllegalArgumentException("listener == null");
+        }
         this.url = url;
         this.handler = handler;
+        this.listener = listener;
     }
 
     @Override
     public void channelActive(ChannelHandlerContext ctx) throws Exception {
         NettyChannel channel = NettyChannel.getOrAddChannel(ctx.channel(), url, handler);
         handler.connected(channel);
-        if (log.isInfoEnabled()) {
-            log.info("The connection of " + channel.getLocalAddress() + " -> " + channel.getRemoteAddress() + " is established.");
+        if (logger.isInfoEnabled()) {
+            logger.info("The connection of " + channel.getLocalAddress() + " -> " + channel.getRemoteAddress() + " is established.");
         }
     }
 
@@ -50,15 +60,14 @@ public class NettyClientHandler extends ChannelDuplexHandler {
             NettyChannel.removeChannel(ctx.channel());
         }
 
-        if (log.isInfoEnabled()) {
-            log.info("The connection of " + channel.getLocalAddress() + " -> " + channel.getRemoteAddress() + " is disconnected.");
+        if (logger.isInfoEnabled()) {
+            logger.info("The connection of " + channel.getLocalAddress() + " -> " + channel.getRemoteAddress() + " is disconnected.");
         }
     }
 
     @Override
     public void channelRead(ChannelHandlerContext ctx, Object msg) throws Exception {
-        NettyChannel channel = NettyChannel.getOrAddChannel(ctx.channel(), url, handler);
-        handler.received(channel, msg);
+        listener.received(msg);
     }
 
     @Override
@@ -67,6 +76,8 @@ public class NettyClientHandler extends ChannelDuplexHandler {
         NettyChannel channel = NettyChannel.getOrAddChannel(ctx.channel(), url, handler);
         boolean isRequest = msg instanceof Request;
 
+        // 需要保证出站事件的正确，在大多数情况下，都是由于编码器
+        // 工作错误导致的，在出错时直接返回
         promise.addListener(future -> {
             if (future.isSuccess()) {
                 handler.sent(channel, msg);
@@ -75,8 +86,7 @@ public class NettyClientHandler extends ChannelDuplexHandler {
 
             Throwable cause = future.cause();
             if (cause != null && isRequest) {
-                Request request = (Request) msg;
-                // todo
+                listener.received(buildErrorResponse(cause));
             }
         });
     }
@@ -95,5 +105,15 @@ public class NettyClientHandler extends ChannelDuplexHandler {
         } finally {
             NettyChannel.removeChannelIfDisconnected(ctx.channel());
         }
+    }
+
+    /**
+     * build a bad request's response
+     *
+     * @param t       the throwable. In most cases, serialization fails.
+     * @return the response
+     */
+    private static Response buildErrorResponse(Throwable t) {
+        return new Response(Response.BAD_REQUEST, t.getMessage());
     }
 }

@@ -53,4 +53,9 @@ public class URL {
     public InetSocketAddress toInetSocketAddress() {
         return new InetSocketAddress(getHost(), getPort());
     }
+
+    @Override
+    public String toString() {
+        return host + ":" + port;
+    }
 }

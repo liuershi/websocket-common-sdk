@@ -1,4 +1,4 @@
-package com.hikvision.websocket.transport;
+package com.hikvision.websocket.netty.remoting;
 
 import java.net.InetSocketAddress;
 

@@ -1,6 +1,6 @@
 package com.hikvision.websocket.exception;
 
-import com.hikvision.websocket.transport.Channel;
+import com.hikvision.websocket.netty.remoting.Channel;
 
 import java.net.InetSocketAddress;
 

@@ -1,11 +1,10 @@
-package com.hikvision.websocket.client;
+package com.hikvision.websocket.netty;
 
 import com.hikvision.websocket.api.URL;
 import com.hikvision.websocket.exception.RemotingException;
-import com.hikvision.websocket.transport.AbstractChannel;
-import com.hikvision.websocket.transport.ChannelHandler;
+import com.hikvision.websocket.netty.transport.AbstractChannel;
+import com.hikvision.websocket.netty.remoting.ChannelHandler;
 import io.netty.channel.ChannelFuture;
-import lombok.extern.slf4j.Slf4j;
 
 import java.net.InetSocketAddress;
 import java.util.concurrent.ConcurrentHashMap;
@@ -13,23 +12,26 @@ import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 import io.netty.channel.Channel;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
- * 维护当前的连接
+ * Maintain current active connections
  *
  * @author zhangwei151
  * @date 2022/9/14 18:10
  */
-@Slf4j
 public class NettyChannel extends AbstractChannel {
 
+    private static final Logger logger = LoggerFactory.getLogger(NettyChannel.class);
+
     /**
-     * 当前活跃的设备端连接
+     * currently active channel cache
      */
     private static final ConcurrentMap<Channel, NettyChannel> CHANNEL_MAP = new ConcurrentHashMap<>();
 
     /**
-     * 实际通信的连接
+     * native channel (netty channel)
      */
     private final Channel channel;
 
@@ -43,8 +45,12 @@ public class NettyChannel extends AbstractChannel {
         this.channel = channel;
     }
 
+    public static NettyChannel getChannel(Channel ch) {
+        return CHANNEL_MAP.get(ch);
+    }
+
     /**
-     * 通过netty的channel获取封装的channel
+     * Get the encapsulated channel through netty's channel
      *
      * @param ch netty channel
      * @param url wrapper URL
@@ -69,7 +75,7 @@ public class NettyChannel extends AbstractChannel {
     }
 
     /**
-     * 移除无效的连接
+     * Remove invalid connections
      *
      * @param ch netty channel
      */
@@ -83,7 +89,7 @@ public class NettyChannel extends AbstractChannel {
     }
 
     /**
-     * 移除连接
+     * remove channel
      *
      * @param ch netty channel
      */
@@ -117,6 +123,7 @@ public class NettyChannel extends AbstractChannel {
 
     /**
      * 通过netty的channel发送消息以及是否等待数据发送完成
+     *
      * @param message 消息
      * @param sent    是否等待数据发送完成
      * @throws RemotingException 如果超时或者方法体中发送异常时抛出该异常
@@ -154,20 +161,20 @@ public class NettyChannel extends AbstractChannel {
         try {
             super.close();
         } catch (Exception e) {
-            log.warn(e.getMessage(), e);
+            logger.warn(e.getMessage(), e);
         }
         try {
             removeChannelIfDisconnected(channel);
         } catch (Exception e) {
-            log.warn(e.getMessage(), e);
+            logger.warn(e.getMessage(), e);
         }
         try {
-            if (log.isInfoEnabled()) {
-                log.info("Close netty channel " + channel);
+            if (logger.isInfoEnabled()) {
+                logger.info("Close netty channel " + channel);
             }
             channel.close();
         } catch (Exception e) {
-            log.warn(e.getMessage(), e);
+            logger.warn(e.getMessage(), e);
         }
     }
 

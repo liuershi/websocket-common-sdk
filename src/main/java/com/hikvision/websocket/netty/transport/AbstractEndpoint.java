@@ -1,6 +1,8 @@
-package com.hikvision.websocket.transport;
+package com.hikvision.websocket.netty.transport;
 
 import com.hikvision.websocket.api.URL;
+import com.hikvision.websocket.netty.remoting.ChannelHandler;
+
 
 /**
  * AbstractEndpoint

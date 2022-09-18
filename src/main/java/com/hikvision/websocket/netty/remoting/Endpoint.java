@@ -1,4 +1,4 @@
-package com.hikvision.websocket.transport;
+package com.hikvision.websocket.netty.remoting;
 
 import com.hikvision.websocket.api.URL;
 import com.hikvision.websocket.exception.RemotingException;
@@ -69,5 +69,4 @@ public interface Endpoint {
      * @return closed
      */
     boolean isClosed();
-
 }

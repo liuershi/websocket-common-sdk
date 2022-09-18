@@ -1,7 +1,11 @@
-package com.hikvision.websocket.transport;
+package com.hikvision.websocket.netty.transport;
 
 import com.hikvision.websocket.api.URL;
 import com.hikvision.websocket.exception.RemotingException;
+import com.hikvision.websocket.netty.remoting.ChannelHandler;
+import com.hikvision.websocket.netty.remoting.Channel;
+import com.hikvision.websocket.netty.remoting.Endpoint;
+
 
 /**
  * AbstractPeer

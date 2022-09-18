@@ -16,11 +16,10 @@
  */
 package com.hikvision.websocket.utils;
 
-
-import lombok.extern.slf4j.Slf4j;
-import org.apache.activemq.util.LRUCache;
 import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.net.*;
@@ -34,8 +33,8 @@ import static java.util.Collections.emptyList;
 /**
  * IP and Port Helper for RPC
  */
-@Slf4j
 public final class NetUtils {
+    private static final Logger logger = LoggerFactory.getLogger(NetUtils.class);
 
     /**
      * Forbids instantiation.
@@ -56,7 +55,6 @@ public final class NetUtils {
     private static final Pattern LOCAL_IP_PATTERN = Pattern.compile("127(\\.\\d{1,3}){3}$");
     private static final Pattern IP_PATTERN = Pattern.compile("\\d{1,3}(\\.\\d{1,3}){3,5}$");
 
-    private static final Map<String, String> HOST_NAME_CACHE = new LRUCache<>(1000);
     private static volatile InetAddress LOCAL_ADDRESS = null;
 
     private static final String SPLIT_IPV4_CHARACTER = "\\.";
@@ -204,7 +202,7 @@ public final class NetUtils {
                 return InetAddress.getByName(addr.substring(0, i) + '%' + address.getScopeId());
             } catch (UnknownHostException e) {
                 // ignore
-                log.debug("Unknown IPV6 address: ", e);
+                logger.debug("Unknown IPV6 address: ", e);
             }
         }
         return address;
@@ -273,7 +271,7 @@ public final class NetUtils {
                 }
             }
         } catch (Throwable e) {
-            log.warn(e.getMessage(), e);
+            logger.warn(e.getMessage(), e);
         }
 
         try {
@@ -283,7 +281,7 @@ public final class NetUtils {
                 return addressOp.get();
             }
         } catch (Throwable e) {
-            log.warn(e.getMessage(), e);
+            logger.warn(e.getMessage(), e);
         }
 
 
@@ -315,7 +313,7 @@ public final class NetUtils {
                     matched = networkInterfaceDisplayName.matches(trimIgnoredInterface);
                 } catch (PatternSyntaxException e) {
                     // if trimIgnoredInterface is an invalid regular expression, a PatternSyntaxException will be thrown out
-                    log.warn("exception occurred: " + networkInterfaceDisplayName + " matches " + trimIgnoredInterface, e);
+                    logger.warn("exception occurred: " + networkInterfaceDisplayName + " matches " + trimIgnoredInterface, e);
                 } finally {
                     if (matched) {
                         return true;
@@ -374,7 +372,7 @@ public final class NetUtils {
         try {
             validNetworkInterfaces = getValidNetworkInterfaces();
         } catch (Throwable e) {
-            log.warn(e.getMessage(), e);
+            logger.warn(e.getMessage(), e);
         }
 
         NetworkInterface result = null;
@@ -415,28 +413,6 @@ public final class NetUtils {
         }
 
         return result;
-    }
-
-    public static String getHostName(String address) {
-        try {
-            int i = address.indexOf(':');
-            if (i > -1) {
-                address = address.substring(0, i);
-            }
-            String hostname = HOST_NAME_CACHE.get(address);
-            if (hostname != null && hostname.length() > 0) {
-                return hostname;
-            }
-            InetAddress inetAddress = InetAddress.getByName(address);
-            if (inetAddress != null) {
-                hostname = inetAddress.getHostName();
-                HOST_NAME_CACHE.put(address, hostname);
-                return hostname;
-            }
-        } catch (Throwable e) {
-            // ignore
-        }
-        return address;
     }
 
     public static String getLocalHostName() {
