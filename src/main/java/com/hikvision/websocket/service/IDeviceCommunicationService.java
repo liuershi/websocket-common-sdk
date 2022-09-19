@@ -47,4 +47,12 @@ public interface IDeviceCommunicationService {
      * @return asynchronous result
      */
     Future<Response> sendAsync(InetSocketAddress address, Request request);
+
+    /**
+     * confirm device response data
+     *
+     * @param address device socket address
+     * @param request request data
+     */
+    void confirm(InetSocketAddress address, Request request);
 }

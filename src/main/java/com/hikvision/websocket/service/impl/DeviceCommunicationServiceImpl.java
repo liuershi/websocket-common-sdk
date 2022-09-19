@@ -51,4 +51,9 @@ public class DeviceCommunicationServiceImpl implements IDeviceCommunicationServi
     public Future<Response> sendAsync(InetSocketAddress address, Request request) {
         return NettyClient.getOrAddClient(address, DefaultChannelHandler.getInstance()).request(request);
     }
+
+    @Override
+    public void confirm(InetSocketAddress address, Request request) {
+        NettyClient.getOrAddClient(address, DefaultChannelHandler.getInstance()).send(request);
+    }
 }
