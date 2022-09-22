@@ -91,6 +91,7 @@ public class CodecAdapter {
                 Response response = new Response(contentBytes);
                 out.add(response);
             }
+            header.release();
         }
     }
 }
