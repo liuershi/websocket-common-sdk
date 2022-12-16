@@ -10,7 +10,7 @@
     </parent>
     <groupId>com.hikvision</groupId>
     <artifactId>websocket-common-sdk</artifactId>
-    <version>1.0.0-SNAPSHOT</version>
+    <version>1.0.0.RELEASE</version>
     <packaging>jar</packaging>
     <name>websocket-common-sdk</name>
     <description>websocket-common-sdk</description>
@@ -71,7 +71,7 @@
         <repository>
             <id>AREA-release</id>
             <name>AREA-release</name>
-            <url>https://af.hikvision.com.cn/artifactory/maven-area-release/</url>
+            <url>http://af.hikvision.com.cn/artifactory/maven-area-release/</url>
         </repository>
         <snapshotRepository>
             <id>AREA-snapshot</id>
